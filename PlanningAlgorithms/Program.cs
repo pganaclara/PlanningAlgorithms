@@ -15,9 +15,10 @@ namespace PlanningAlgorithms
             System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("en-US");
 
             var problem = new FlexibleManufacturingSystem();
-            var algorithms = new (string, Func<int, AbstractEvent[]>)[2];
+            var algorithms = new (string, Func<int, AbstractEvent[]>)[3];
             algorithms[0] = ("Parallelism Maximization with Time Restrictions", (p) => PMT(problem, p, controllableFirst: true));
             algorithms[1] = ("Heuristic Makespan Minimization", (p) => HMM(problem, p, controllableFirst: true));
+            algorithms[2] = ("Supervisory Control and Optimization", (p) => SCO(problem, p, controllableFirst: true));
             //algorithms[2] = ("Parallelism Maximization (Logic)", (p) => PML(problem, p, controllableFirst: false));
 
             foreach (var (name, algorithm) in algorithms)
