@@ -119,9 +119,9 @@ namespace PlanningAlgorithms
         static AbstractEvent[] GenerateFinalArray(AbstractEvent[] initialPhase, AbstractEvent[] productionPhase, AbstractEvent[] finalPhase, int numberOfProducts, int[] productionSequence)
         {
             int productionRepeatCount = (numberOfProducts % 2 == 0) ? (numberOfProducts - 1) / 2 : numberOfProducts / 2;
-            var reversedSequence = productionSequence.Select(x => (x == 0) ? 1 : 0).ToArray();
-            var reversedProductionPhase2 = ConcatenateGroups(initialPhase, finalPhase, reversedSequence); // 12 events of group1 with 11 events of group0
-            var reversedProductionPhase = finalPhase.Concat(initialPhase).ToArray();
+            var reversedSequence = productionSequence.Select(x => (x == 0) ? 1 : 0).ToArray(); //create ipattern inverting 0s and 1s
+            var reversedProductionPhase = ConcatenateGroups(initialPhase, finalPhase, reversedSequence); //create the sequence based on the reversed sequence with 0s and 1s
+
             var firstHalf = productionPhase.Take(12).ToArray();
 
             var finalArray = new List<AbstractEvent>();
@@ -133,17 +133,17 @@ namespace PlanningAlgorithms
                 if(numberOfProducts != 2)
                 {
                     finalArray.AddRange(productionPhase);
-                    finalArray.AddRange(reversedProductionPhase2); //se mudar pra reversedProductionPhase2 ele retorna o array de controlaveis certo mas depois tudo errado????????????
+                    finalArray.AddRange(reversedProductionPhase);
                 }
             }
 
             if (numberOfProducts % 2 == 0)
             {
                 finalArray.AddRange(productionPhase);
-                finalArray.AddRange(finalPhase); //se for par termina com group1
+                finalArray.AddRange(finalPhase); //if even finishes with 1s
             } else
             {
-                finalArray.AddRange(firstHalf); //se for impar termina com group0
+                finalArray.AddRange(firstHalf); //if odd finishes with 0s
             }
 
             return finalArray.ToArray();
@@ -152,32 +152,26 @@ namespace PlanningAlgorithms
         public static AbstractEvent[] ConcatenateGroups(AbstractEvent[] group0, AbstractEvent[] group1, int[] groupIndices)
         {
             int totalLength = groupIndices.Length;
-            AbstractEvent[] concatenatedSequence = new AbstractEvent[totalLength];
+            int group0Length = group0.Length;
+            int group1Length = group1.Length;
+            List<AbstractEvent> concatenatedSequence = new List<AbstractEvent>();
 
-            for (int i = 0; i < group0.Length; i++)
+            foreach (int groupIndex in groupIndices)
             {
-                concatenatedSequence[i] = group0[i];
-            }
+                AbstractEvent[] currentGroup = (groupIndex == 0) ? group0 : group1;
 
-            for (int i = 0; i < group1.Length; i++)
-            {
-                concatenatedSequence[group0.Length + i] = group1[i];
-            }
-
-            for (int i = 0; i < totalLength; i++)
-            {
-                int index = groupIndices[i];
-                if (index == 0)
+                if(currentGroup == group0)
                 {
-                    concatenatedSequence[i] = (i < group0.Length) ? group0[i] : group1[i - group0.Length];
-                }
-                else if (index == 1)
+                    concatenatedSequence.Add(group0[group0Length - 11]);
+                    group0Length++;
+                } else
                 {
-                    concatenatedSequence[i] = (i < group1.Length) ? group1[i] : group0[i - group1.Length];
+                    concatenatedSequence.Add(group1[group1Length - 12]);
+                    group1Length++;
                 }
             }
 
-            return concatenatedSequence;
+            return concatenatedSequence.ToArray();
         }
 
         public static (AbstractEvent[] shuffledSequence, int[] groupIndices) TwoOptSwap(AbstractEvent[] solution)
@@ -234,7 +228,7 @@ namespace PlanningAlgorithms
             var array = GenerateFinalArray(initialPhase, productionPhase, finalPhase, products, initialProductionSequence);
             var (currentMakespan, currentArray) = PlanningDES.Tools.TimeEvaluationControllable(problem, array);
 
-            /*while (iteration < maxIterations && noImprovementCount < maxNoImprovement)
+            while (iteration < maxIterations && noImprovementCount < maxNoImprovement)
             {
                 int k = 1;
                 while (k < kMax)
@@ -260,7 +254,8 @@ namespace PlanningAlgorithms
                     noImprovementCount++;
                 }
                 iteration++;
-            }*/
+            }
+
             return currentArray;
         }
     }
