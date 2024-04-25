@@ -10,13 +10,14 @@ using UltraDES;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using TimeContext = System.ValueTuple<System.Collections.Immutable.ImmutableList<UltraDES.AbstractEvent>, PlanningDES.Scheduler, PlanningDES.Restriction, float>;
 using Context = System.ValueTuple<System.Collections.Immutable.ImmutableList<UltraDES.AbstractEvent>, PlanningDES.Restriction, float>;
+using UltraDES.PetriNets;
 
 
 namespace PlanningAlgorithms
 {
     public static partial class Algorithms
     {
-        public static AbstractEvent[] SCO(ISchedulingProblem problem, int products, int limiar = 100, bool controllableFirst = true)
+        public static AbstractEvent[] SCOC(ISchedulingProblem problem, int products, int limiar = 100, bool controllableFirst = true)
         {
             var initial = problem.InitialState;
 
@@ -99,133 +100,38 @@ namespace PlanningAlgorithms
             if (products == 1)
             {
                 return allElements;
-            } else
+            }
+            else
             {
-                var concatenatedArray = controllables.Concat(controllables).ToArray();
+                var concatenatedArray = ConcatenateArrayConcat(controllables, 2);
                 int initialSize = concatenatedArray.Length / 4;
                 int productionSize = 2 * initialSize + 1;
-                
+
                 var initialPhase = concatenatedArray.Take(initialSize).ToArray(); //first 11 events of group0
                 var productionPhase = concatenatedArray.Skip(initialSize).Take(productionSize).ToArray(); //12 events of group0 and 11 of group1
                 var finalPhase = concatenatedArray.Skip(initialSize + productionSize).ToArray(); //12 events of group1
 
-                var bestSolution = VNS(initialPhase, productionPhase, finalPhase, products, problem);
+                var bestSolution = VNSConcat(initialPhase, productionPhase, finalPhase, products, problem);
 
                 return bestSolution;
-
             }
         }
 
-        static AbstractEvent[] GenerateFinalArray(AbstractEvent[] initialPhase, AbstractEvent[] productionPhase, AbstractEvent[] finalPhase, int numberOfProducts, int[] productionSequence)
+        static AbstractEvent[] ConcatenateArrayConcat(AbstractEvent[] array, int products)
         {
-            int productionRepeatCount = (numberOfProducts % 2 == 0) ? (numberOfProducts - 1) / 2 : numberOfProducts / 2;
-            var reversedSequence = productionSequence.Select(x => (x == 0) ? 1 : 0).ToArray(); //create ipattern inverting 0s and 1s
-            var reversedProductionPhase = ConcatenateGroups(initialPhase, finalPhase, reversedSequence); //create the sequence based on the reversed sequence with 0s and 1s
-
-            var firstHalf = productionPhase.Take(12).ToArray();
-
-            var finalArray = new List<AbstractEvent>();
-
-            finalArray.AddRange(initialPhase);
-
-            for (int i = 0; i < productionRepeatCount; i++)
-            {
-                if(numberOfProducts != 2)
-                {
-                    finalArray.AddRange(productionPhase);
-                    finalArray.AddRange(reversedProductionPhase);
-                }
-            }
-
-            if (numberOfProducts % 2 == 0)
-            {
-                finalArray.AddRange(productionPhase);
-                finalArray.AddRange(finalPhase); //if even finishes with 1s
-            } else
-            {
-                finalArray.AddRange(firstHalf); //if odd finishes with 0s
-            }
-
-            return finalArray.ToArray();
+            return Enumerable.Repeat(array, products).SelectMany(x => x).ToArray();
         }
 
-        public static AbstractEvent[] ConcatenateGroups(AbstractEvent[] group0, AbstractEvent[] group1, int[] groupIndices)
-        {
-            int totalLength = groupIndices.Length;
-            int group0Length = group0.Length;
-            int group1Length = group1.Length;
-            List<AbstractEvent> concatenatedSequence = new List<AbstractEvent>();
-
-            foreach (int groupIndex in groupIndices)
-            {
-                AbstractEvent[] currentGroup = (groupIndex == 0) ? group0 : group1;
-
-                if(currentGroup == group0)
-                {
-                    concatenatedSequence.Add(group0[group0Length - 11]);
-                    group0Length++;
-                } else
-                {
-                    concatenatedSequence.Add(group1[group1Length - 12]);
-                    group1Length++;
-                }
-            }
-
-            return concatenatedSequence.ToArray();
-        }
-
-        public static (AbstractEvent[] shuffledSequence, int[] groupIndices) TwoOptSwap(AbstractEvent[] solution)
-        {
-            Random random = new Random();
-
-            AbstractEvent[] group0 = solution.Take(12).ToArray();
-            AbstractEvent[] group1 = solution.Skip(12).ToArray();
-
-            int group0Index = 0;
-            int group1Index = 0;
-
-            List<AbstractEvent> shuffledEvents = new List<AbstractEvent>();
-            List<int> groupIndices = new List<int>();
-
-            while (group0Index < group0.Length || group1Index < group1.Length)
-            {
-                if (group0Index < group0.Length && (group1Index >= group1.Length || random.Next(2) == 0))
-                {
-                    if (VerifyFeasibility(group0[group0Index], shuffledEvents))
-                    {
-                        shuffledEvents.Add(group0[group0Index]);
-                        groupIndices.Add(0); // Group 0 index
-                        group0Index++;
-                    }
-                }
-                else
-                {
-                    if (VerifyFeasibility(group1[group1Index], shuffledEvents))
-                    {
-                        shuffledEvents.Add(group1[group1Index]);
-                        groupIndices.Add(1); // Group 1 index
-                        group1Index++;
-                    }
-                }
-            }
-
-            return (shuffledEvents.ToArray(), groupIndices.ToArray());
-        }
-
-        static bool VerifyFeasibility(AbstractEvent abstractEvent, List<AbstractEvent> shuffledEvents)
-        {
-            return true;
-        }
-
-        static AbstractEvent[] VNS(AbstractEvent[] initialPhase, AbstractEvent[] productionPhase, AbstractEvent[] finalPhase, int products, ISchedulingProblem problem)
+        static AbstractEvent[] VNSConcat(AbstractEvent[] initialPhase, AbstractEvent[] productionPhase, AbstractEvent[] finalPhase, int products, ISchedulingProblem problem)
         {
             int noImprovementCount = 0;
-            int maxNoImprovement = 2;
+            int maxNoImprovement = 20;
             int iteration = 0;
-            int maxIterations = 1;
-            int kMax = 2;
+            int maxIterations = 5;
+            int kMax = 20;
             int[] initialProductionSequence = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
-            var array = GenerateFinalArray(initialPhase, productionPhase, finalPhase, products, initialProductionSequence);
+            var firstHalf = productionPhase.Take(12).ToArray();
+            var array = GenerateFinalArrayConcat(initialPhase, productionPhase, firstHalf, finalPhase, products, initialProductionSequence);
             var (currentMakespan, currentArray) = PlanningDES.Tools.TimeEvaluationControllable(problem, array);
 
             while (iteration < maxIterations && noImprovementCount < maxNoImprovement)
@@ -233,8 +139,9 @@ namespace PlanningAlgorithms
                 int k = 1;
                 while (k < kMax)
                 {
-                    (AbstractEvent[] newSolution, int[] productionSequence) = TwoOptSwap(productionPhase);
-                    var finalArray = GenerateFinalArray(initialPhase, productionPhase, finalPhase, products, initialProductionSequence);
+                    (AbstractEvent[] newSolution, int[] productionSequence) = TwoOptSwapConcat(initialPhase, productionPhase, problem);
+                    var arrayBeforeVerification = GenerateFinalArrayConcat(initialPhase, newSolution, firstHalf, finalPhase, products, productionSequence);
+                    var finalArray = LGSE(arrayBeforeVerification, problem);
                     var (newMakespan, newArray) = PlanningDES.Tools.TimeEvaluationControllable(problem, finalArray);
 
                     if (newMakespan < currentMakespan)
@@ -257,6 +164,145 @@ namespace PlanningAlgorithms
             }
 
             return currentArray;
+        }
+
+        static AbstractEvent[] GenerateFinalArrayConcat(AbstractEvent[] initialPhase, AbstractEvent[] productionPhase, AbstractEvent[] firstHalf, AbstractEvent[] finalPhase, int numberOfProducts, int[] productionSequence)
+        {
+            int productionRepeatCount = (numberOfProducts % 2 == 0) ? (numberOfProducts - 1) / 2 : numberOfProducts / 2;
+            var reversedSequence = productionSequence.Select(x => (x == 0) ? 1 : 0).ToArray(); //create ipattern inverting 0s and 1s
+            var reversedProductionPhase = ConcatenateGroupsConcat(initialPhase, finalPhase, reversedSequence); //create the sequence based on the reversed sequence with 0s and 1s
+
+            var finalArray = new List<AbstractEvent>();
+
+            finalArray.AddRange(initialPhase);
+
+            for (int i = 0; i < productionRepeatCount; i++)
+            {
+                if (numberOfProducts != 2)
+                {
+                    finalArray.AddRange(productionPhase);
+                    finalArray.AddRange(reversedProductionPhase);
+                }
+            }
+
+            if (numberOfProducts % 2 == 0)
+            {
+                finalArray.AddRange(productionPhase);
+                finalArray.AddRange(finalPhase); //if even finishes with 1s
+            }
+            else
+            {
+                finalArray.AddRange(firstHalf); //if odd finishes with 0s
+            }
+
+            return finalArray.ToArray();
+        }
+
+        public static AbstractEvent[] ConcatenateGroupsConcat(AbstractEvent[] group0, AbstractEvent[] group1, int[] groupIndices)
+        {
+            int group0Length = 0;
+            int group1Length = 0;
+            List<AbstractEvent> concatenatedSequence = new List<AbstractEvent>();
+
+            foreach (int groupIndex in groupIndices)
+            {
+                AbstractEvent[] currentGroup = (groupIndex == 0) ? group0 : group1;
+
+                if (currentGroup == group0)
+                {
+                    concatenatedSequence.Add(group0[group0Length]);
+                    group0Length++;
+                }
+                else
+                {
+                    concatenatedSequence.Add(group1[group1Length]);
+                    group1Length++;
+                }
+            }
+
+            return concatenatedSequence.ToArray();
+        }
+
+        public static (AbstractEvent[] shuffledSequence, int[] groupIndices) TwoOptSwapConcat(AbstractEvent[] initialPhase, AbstractEvent[] productionPhase, ISchedulingProblem problem)
+        {
+            Random random = new Random();
+
+            AbstractEvent[] group0 = productionPhase.Take(12).ToArray();
+            AbstractEvent[] group1 = productionPhase.Skip(12).ToArray();
+
+            int group0Index = 0;
+            int group1Index = 0;
+
+            List<AbstractEvent> shuffledEvents = new List<AbstractEvent>();
+            List<int> groupIndices = new List<int>();
+
+            while (group0Index < group0.Length || group1Index < group1.Length)
+            {
+                if (group0Index < group0.Length && (group1Index >= group1.Length || random.Next(2) == 0))
+                {
+                    shuffledEvents.Add(group0[group0Index]);
+                    groupIndices.Add(0); // Group 0 index
+                    group0Index++;
+                }
+                else
+                {
+                    shuffledEvents.Add(group1[group1Index]);
+                    groupIndices.Add(1); // Group 1 index
+                    group1Index++;
+                }
+            }
+
+            return (shuffledEvents.ToArray(), groupIndices.ToArray());
+        }
+
+        static AbstractEvent[] LGSE(AbstractEvent[] arrayBeforeVerification, ISchedulingProblem problem)
+        {
+            var finiteAutomaton = problem.Supervisor.Projection(problem.Supervisor.UncontrollableEvents);
+            var transitions = finiteAutomaton.Transitions.GroupBy(t => t.Origin)
+                .ToDictionary(g => g.Key, g => g.ToDictionary(t => t.Trigger, t => t.Destination));
+            var currentState = finiteAutomaton.InitialState;
+            List<AbstractEvent> postponedEvents = new List<AbstractEvent>();
+            List<AbstractEvent> newArray = new List<AbstractEvent>();
+
+            foreach (var eventsInitialPhase in arrayBeforeVerification)
+            {
+                try
+                {
+                    currentState = transitions[currentState][eventsInitialPhase];
+                    newArray.Add(eventsInitialPhase);
+                }
+                catch (Exception)
+                {
+                    var trans = transitions[currentState].Keys;
+                    if (!trans.Contains(eventsInitialPhase))
+                    {
+                        postponedEvents.Add(eventsInitialPhase);
+                    }
+                }
+
+                for (int i = 0; i < postponedEvents.Count; i++)
+                {
+                    var e = postponedEvents[i];
+                    var trans = transitions[currentState].Keys;
+                    if (trans.Contains(e))
+                    {
+                        try
+                        {
+                            currentState = transitions[currentState][e];
+                            newArray.Add(e);
+                            postponedEvents.RemoveAt(i);
+                            i--;
+                        }
+                        catch (Exception)
+                        {
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            return newArray.ToArray();
+
         }
     }
 }
